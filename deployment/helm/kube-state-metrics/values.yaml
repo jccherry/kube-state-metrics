@@ -16,7 +16,7 @@ service:
   telemetryPort: 8081
 
 ingress:
-  enabled: false
+  enabled: true
   className: traefik
   host: kube-state-metrics.cherrykube.lan
   annotations: {}
