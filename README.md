@@ -87,6 +87,19 @@ Key values in `deployment/helm/kube-state-metrics/values.yaml`:
 
 See `docs/DEPLOYMENT.md` for the full operational guide.
 
+## Grafana Dashboards
+
+Pre-built dashboards live in `dashboards/` and can be imported into Grafana:
+
+| Dashboard | File | Description |
+|-----------|------|-------------|
+| Resource Usage | `dashboards/resource-usage.json` | CPU & memory usage vs requests/limits per namespace, pod, container |
+| Cluster Overview | `dashboards/cluster-overview.json` | High-level cluster stats, pod distribution, node status |
+| Workload Status | `dashboards/workload-status.json` | Deployment, DaemonSet, StatefulSet, Job health |
+| Node Overview | `dashboards/node-overview.json` | Per-node resource usage, capacity planning |
+
+All dashboards use a `$datasource` template variable for Prometheus data source selection. See `docs/DEPLOYMENT.md` for import instructions.
+
 ## CI
 
 GitHub Actions runs `helm lint` and `helm template` on every push and PR to `main`.

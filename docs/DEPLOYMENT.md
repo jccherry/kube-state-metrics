@@ -120,6 +120,94 @@ spec:
     - port: metrics
 ```
 
+## Grafana Dashboards
+
+### Import via UI
+
+1. Open Grafana (`http://cherrygraf01:3000`)
+2. Go to **Dashboards** > **New** > **Import**
+3. Upload or paste the JSON from any file in `dashboards/`
+4. Select a Prometheus data source when prompted
+
+### Import via API
+
+```bash
+# Create a folder for the dashboards
+curl -X POST http://cherrygraf01:3000/api/folders \
+  -H "Content-Type: application/json" \
+  -d '{"title": "kube-state-metrics", "uid": "kube-state-metrics"}'
+
+# Import each dashboard
+for f in dashboards/*.json; do
+  curl -X POST http://cherrygraf01:3000/api/dashboards/db \
+    -H "Content-Type: application/json" \
+    -d "{\"dashboard\": $(cat "$f"), \"folderUid\": \"kube-state-metrics\", \"overwrite\": true}"
+done
+```
+
+### Kubelet/cAdvisor Scraping (for CPU/Memory Usage Panels)
+
+The Resource Usage, Cluster Overview, and Node Overview dashboards require actual CPU and memory metrics from kubelet/cAdvisor. These metrics (`container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`) are not provided by kube-state-metrics itself.
+
+**1. Create RBAC on k3s (from cherryjump01):**
+
+```bash
+kubectl create namespace prometheus-external
+kubectl create serviceaccount prometheus-scraper -n prometheus-external
+kubectl create clusterrole prometheus-scraper \
+  --verb=get,list,watch \
+  --resource=nodes,nodes/proxy,nodes/metrics,nodes/stats,services,endpoints,pods
+kubectl create clusterrolebinding prometheus-scraper \
+  --clusterrole=prometheus-scraper \
+  --serviceaccount=prometheus-external:prometheus-scraper
+```
+
+**2. Generate a bearer token:**
+
+```bash
+kubectl create token prometheus-scraper -n prometheus-external --duration=8760h
+```
+
+**3. Save the token on the Prometheus host:**
+
+Write the token to `/etc/prometheus/k3s-bearer-token`.
+
+**4. Add scrape configs to `prometheus.yml`:**
+
+```yaml
+scrape_configs:
+  - job_name: "k3s-kubelet-cadvisor"
+    metrics_path: "/metrics/cadvisor"
+    scheme: "https"
+    bearer_token_file: "/etc/prometheus/k3s-bearer-token"
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets:
+          - "192.168.88.201:10250"
+          - "192.168.88.202:10250"
+          - "192.168.88.203:10250"
+
+  - job_name: "k3s-kubelet"
+    metrics_path: "/metrics"
+    scheme: "https"
+    bearer_token_file: "/etc/prometheus/k3s-bearer-token"
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets:
+          - "192.168.88.201:10250"
+          - "192.168.88.202:10250"
+          - "192.168.88.203:10250"
+```
+
+**5. Validate and reload:**
+
+```bash
+promtool check config /etc/prometheus/prometheus.yml
+rc-service prometheus reload
+```
+
 ## Verification
 
 ```bash
