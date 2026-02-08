@@ -2,84 +2,49 @@
 
 These instructions are mandatory for all Claude Code sessions working in this repository.
 
-## Session Startup
+## Project Overview
 
-1. **Read all docs first.** Before writing any code, read every file in `docs/` to understand the current state of the project — architecture, conventions, deployment, and test strategy.
-2. **Work on a clean branch.** Always create a new branch off `main` for any feature, improvement, or bugfix. Use conventional branch names: `feat/`, `fix/`, `refactor/`, `docs/`, `chore/`.
-3. **Understand before acting.** Review relevant source files before making changes. Never modify code you haven't read.
+This repo deploys [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) to a k3s homelab cluster using a custom Helm chart. kube-state-metrics generates Prometheus metrics about the state of Kubernetes objects (deployments, pods, nodes, etc.).
 
-## Planning & Requirements
+## Infrastructure
 
-Before starting implementation, ask probing questions to:
+| Component | Details |
+|-----------|---------|
+| Cluster | 3-node k3s (1 master + 2 workers) |
+| Ingress | Traefik (built into k3s) |
+| DNS | Pi-hole, domain: `*.cherrykube.lan` |
+| Registry | Local Docker registry on `cherrydocker01.lan:5000` |
+| Jump host | `cherryjump01` — the only host with `helm` and `kubectl` |
+| Infra repo | [jccherry/k3s-homelab](https://github.com/jccherry/k3s-homelab) |
 
-- **Clarify requirements** — What exactly should this do? What inputs/outputs are expected?
-- **Identify hard requirements** — What constraints are non-negotiable (performance, compatibility, security)?
-- **Identify soft requirements** — What's preferred but flexible (naming, UI layout, specific libraries)?
-- **Discover hidden requirements** — What edge cases, error states, or integrations haven't been mentioned?
-- **Confirm scope** — What's explicitly out of scope for this change?
+## Repo Structure
 
-Do not assume. When in doubt, ask.
+```
+deployment/helm/kube-state-metrics/   # Helm chart (all K8s manifests)
+  Chart.yaml                          # Chart metadata, appVersion tracks upstream
+  values.yaml                         # Default configuration
+  templates/                          # K8s resource templates
+.github/workflows/
+  ci.yml                              # helm lint + helm template validation
+  auto-tag.yml                        # Semver tagging on merge to main
+docs/
+  DEPLOYMENT.md                       # Operational guide
+```
 
-## Code Style
+## Development Workflow
 
-- **Be concise and modern.** Use current language features and idiomatic patterns.
-- **Comments: reasonable, not verbose.** Comment the "why", not the "what". Skip obvious comments. Add comments for non-obvious logic, workarounds, and business rules.
-- **No over-engineering.** Solve the problem at hand. Don't build abstractions for hypothetical future needs.
+1. **No local helm/kubectl** — this Mac does not have helm or kubectl. All chart testing and deployment happens on `cherryjump01` via SSH.
+2. **Branch off main** — use `feat/`, `fix/`, `refactor/`, `docs/`, `chore/` prefixes.
+3. **CI validates charts** — GitHub Actions runs `helm lint` and `helm template` on PRs.
+4. **Deploy from cherryjump01** — `ssh cherry@cherryjump01`, clone/pull the repo, run `helm install/upgrade`.
 
-## Testing
+## Versioning
 
-- **Always include tests.** Every feature or bugfix should have corresponding tests.
-- **Keep CI green.** Ensure GitHub Actions CI passes before requesting review.
-- **Test edge cases.** Cover error paths and boundary conditions, not just the happy path.
+Follows [Semantic Versioning](https://semver.org/). Tags are bare numbers (e.g., `1.0.0`). Auto-tagged on merge to `main` via `.github/workflows/auto-tag.yml`. Apply `semver:major`, `semver:minor`, or `semver:patch` labels to PRs before merging.
 
-## Documentation
+## Key Decisions
 
-- **Keep `docs/` up to date.** When you change code, update the relevant doc files in the same commit.
-- **Co-locate doc changes with code changes.** Don't make a separate commit for docs — include them with the code they describe.
-- **Update `README.md`** if your change affects setup, deployment, or architecture.
-
-## Git Workflow
-
-- Branch off `main` for all work.
-- Write clear, descriptive commit messages summarizing the "why".
-- Keep commits atomic — one logical change per commit.
-- Include doc updates in the same commit as the related code change.
-
-## CI/CD
-
-- All projects must include GitHub Actions CI that runs linting and tests.
-- CI must pass before merging to `main`.
-- Keep CI configuration in `.github/workflows/`.
-
-## Versioning & Tagging
-
-All projects follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). Tags are bare version numbers with **no `v` prefix** (e.g., `1.0.0`, not `v1.0.0`). Tags are created automatically on merge to `main` via `.github/workflows/auto-tag.yml`.
-
-### Before Merging a PR
-
-Claude must assess the version bump type and confirm with the user:
-
-1. **Review all changes** in the PR (commits, files changed, scope of impact).
-2. **Propose a version bump** using these criteria:
-   - **Major** (`X.0.0`) — Breaking changes: removed/renamed public APIs, changed behavior that existing consumers depend on, incompatible schema migrations, dropped support for a platform/runtime.
-   - **Minor** (`x.Y.0`) — New functionality added in a backward-compatible way: new endpoints, new features, new optional config, new UI pages/components.
-   - **Patch** (`x.y.Z`) — Backward-compatible fixes: bug fixes, performance improvements, dependency updates, typo fixes, doc-only changes, refactors with no behavior change.
-3. **Explain the reasoning** — Briefly state why the bump type applies.
-4. **Ask the user to confirm** — Do not apply the label without explicit approval.
-5. **Apply the label** — Add `semver:major`, `semver:minor`, or `semver:patch` to the PR before merging.
-
-If no label is applied, the workflow defaults to a patch bump.
-
-### Example
-
-> This PR adds a new `/api/v1/reports` endpoint with query filtering. No existing endpoints were changed. I'd classify this as a **minor** version bump (new backward-compatible feature). The version would go from `1.2.3` → `1.3.0`. Does that look right?
-
-## README Standards
-
-Every project README should include:
-
-1. **Top-level summary** — What the project does, in 1-2 sentences.
-2. **Quick start** — How to get running locally.
-3. **Dev deployment** — How to deploy to a dev environment.
-4. **Staging deployment** — How to deploy to staging.
-5. **Architecture diagram** — If the system has multiple components, include a diagram (Mermaid preferred).
+- **Official image from `registry.k8s.io`** — k3s nodes have internet access. Can switch to local mirror via `image.repository` in values.yaml.
+- **Own namespace `kube-state-metrics`** — matches homelab pattern of per-app namespaces.
+- **ClusterIP service** — internal-only; Prometheus scrapes directly. Optional Traefik ingress available.
+- **Homelab-sized resources** — 50m/64Mi requests, 200m/256Mi limits.

@@ -1,0 +1,42 @@
+image:
+  repository: registry.k8s.io/kube-state-metrics/kube-state-metrics
+  tag: ""  # Defaults to appVersion in Chart.yaml
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  metricsPort: 8080
+  telemetryPort: 8081
+
+ingress:
+  enabled: false
+  className: traefik
+  host: kube-state-metrics.cherrykube.lan
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Restrict which collectors are enabled (empty = all default collectors)
+collectors: []
+
+# Restrict which namespaces are watched (empty = all namespaces)
+namespaces: []
+
+podAnnotations: {}
+
+nodeSelector: {}
+
+tolerations: []
