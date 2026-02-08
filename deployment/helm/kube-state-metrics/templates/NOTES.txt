@@ -1,0 +1,20 @@
+kube-state-metrics has been deployed to namespace {{ .Release.Namespace }}.
+
+Verify the deployment:
+
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl get svc -n {{ .Release.Namespace }}
+
+Access metrics via port-forward:
+
+  kubectl port-forward svc/{{ include "kube-state-metrics.fullname" . }} 8080:{{ .Values.service.metricsPort }} -n {{ .Release.Namespace }}
+  curl http://localhost:8080/metrics
+
+{{- if .Values.ingress.enabled }}
+
+Ingress is enabled at: http://{{ .Values.ingress.host }}
+{{- end }}
+
+To configure Prometheus scraping, add a scrape config targeting:
+
+  {{ include "kube-state-metrics.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.metricsPort }}

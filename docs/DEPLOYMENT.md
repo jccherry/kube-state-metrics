@@ -1,86 +1,141 @@
-# Deployment
+# Deployment Guide
 
-## Overview
+## Prerequisites
 
-<!-- Describe the deployment targets and strategy: cloud provider, containerized, serverless, etc. -->
+- SSH access to `cherryjump01` (jump host with `helm` and `kubectl`)
+- k3s cluster running (managed by [jccherry/k3s-homelab](https://github.com/jccherry/k3s-homelab))
 
-## Environments
-
-| Environment | URL | Branch | Auto-deploy |
-|-------------|-----|--------|-------------|
-| Dev | <!-- https://dev.example.com --> | <!-- develop --> | <!-- Yes --> |
-| Staging | <!-- https://staging.example.com --> | <!-- main --> | <!-- Yes --> |
-| Production | <!-- https://example.com --> | <!-- release tags --> | <!-- No --> |
-
-## Dev Deployment
+## Install
 
 ```bash
-# Deploy to dev
-# npm run deploy:dev
+ssh cherry@cherryjump01
+
+git clone git@github.com:jccherry/kube-state-metrics.git ~/kube-state-metrics
+cd ~/kube-state-metrics
+
+helm install kube-state-metrics ./deployment/helm/kube-state-metrics \
+  --namespace kube-state-metrics \
+  --create-namespace
 ```
 
-<!-- Describe any manual steps, required env vars, or prerequisites. -->
-
-## Staging Deployment
+## Upgrade
 
 ```bash
-# Deploy to staging
-# npm run deploy:staging
+ssh cherry@cherryjump01
+cd ~/kube-state-metrics && git pull
+
+helm upgrade kube-state-metrics ./deployment/helm/kube-state-metrics \
+  --namespace kube-state-metrics
 ```
 
-<!-- Describe the staging deployment process, approval gates, and verification steps. -->
-
-## Production Deployment
+## Uninstall
 
 ```bash
-# Deploy to production
-# npm run deploy:prod
+helm uninstall kube-state-metrics --namespace kube-state-metrics
+kubectl delete namespace kube-state-metrics
 ```
-
-<!-- Describe the production deployment process, rollback procedure, and post-deploy verification. -->
-
-## Infrastructure
-
-<!-- Describe the infrastructure: servers, containers, load balancers, CDN, DNS. -->
-<!-- Link to IaC (Terraform, Pulumi, CloudFormation) if applicable. -->
-
-## Versioning
-
-This project uses [Semantic Versioning](https://semver.org/). Tags are created automatically when PRs are merged to `main`.
-
-| Label | Bump | Example |
-|-------|------|---------|
-| `semver:major` | Breaking change | `1.2.3` → `2.0.0` |
-| `semver:minor` | New feature | `1.2.3` → `1.3.0` |
-| `semver:patch` | Bug fix / chore | `1.2.3` → `1.2.4` |
-| No label | Defaults to patch | `1.2.3` → `1.2.4` |
-
-The auto-tagging workflow lives at `.github/workflows/auto-tag.yml`.
-
-## CI/CD Pipeline
-
-<!-- Describe the CI/CD flow from commit to production. -->
-
-```
-push → lint → test → build → merge → auto-tag → deploy
-```
-
-## Environment Variables
-
-<!-- List all env vars needed for deployment, separated by environment if they differ. -->
-
-| Variable | Dev | Staging | Production |
-|----------|-----|---------|------------|
-| <!-- API_URL --> | <!-- http://localhost:3000 --> | <!-- https://staging-api.example.com --> | <!-- https://api.example.com --> |
 
 ## Rollback
 
-<!-- Describe how to rollback a bad deployment for each environment. -->
+```bash
+# List release history
+helm history kube-state-metrics --namespace kube-state-metrics
 
-## Monitoring & Alerts
+# Rollback to a specific revision
+helm rollback kube-state-metrics <REVISION> --namespace kube-state-metrics
+```
 
-<!-- Describe monitoring tools, dashboards, and alerting setup. -->
+## Configuration Values
 
-## Notes
+| Value | Default | Description |
+|-------|---------|-------------|
+| `image.repository` | `registry.k8s.io/kube-state-metrics/kube-state-metrics` | Container image. Change to local mirror if needed. |
+| `image.tag` | `""` | Overrides `appVersion` from Chart.yaml |
+| `image.pullPolicy` | `IfNotPresent` | Image pull policy |
+| `replicas` | `1` | Number of replicas |
+| `serviceAccount.create` | `true` | Create a dedicated ServiceAccount |
+| `serviceAccount.name` | `""` | Override SA name (default: release fullname) |
+| `service.type` | `ClusterIP` | Service type |
+| `service.metricsPort` | `8080` | Metrics port |
+| `service.telemetryPort` | `8081` | Telemetry/self-metrics port |
+| `ingress.enabled` | `false` | Enable Traefik ingress |
+| `ingress.className` | `traefik` | Ingress class |
+| `ingress.host` | `kube-state-metrics.cherrykube.lan` | Ingress hostname |
+| `resources.requests.cpu` | `50m` | CPU request |
+| `resources.requests.memory` | `64Mi` | Memory request |
+| `resources.limits.cpu` | `200m` | CPU limit |
+| `resources.limits.memory` | `256Mi` | Memory limit |
+| `collectors` | `[]` | Restrict collectors (empty = all defaults) |
+| `namespaces` | `[]` | Restrict namespaces (empty = all) |
 
-<!-- DNS, SSL certificates, scaling considerations, cost estimates. -->
+### Override Example
+
+```bash
+helm install kube-state-metrics ./deployment/helm/kube-state-metrics \
+  --namespace kube-state-metrics \
+  --create-namespace \
+  --set ingress.enabled=true \
+  --set resources.limits.memory=512Mi
+```
+
+## RBAC
+
+The chart creates a **ClusterRole** with read-only (`list`, `watch`) access to standard Kubernetes resource types across all API groups:
+
+- **Core**: pods, services, nodes, configmaps, secrets, namespaces, endpoints, PVs, PVCs, etc.
+- **Apps**: deployments, daemonsets, statefulsets, replicasets
+- **Batch**: jobs, cronjobs
+- **Networking**: ingresses, networkpolicies
+- **Storage**: storageclasses, volumeattachments
+- **RBAC**: roles, clusterroles, bindings
+- **Others**: HPAs, PDBs, leases, CSRs, webhooks
+
+A **ClusterRoleBinding** binds this role to the chart's ServiceAccount. This is cluster-scoped because kube-state-metrics needs visibility into all namespaces.
+
+## Prometheus Integration
+
+Add this scrape config to your Prometheus configuration:
+
+```yaml
+scrape_configs:
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets:
+          - kube-state-metrics.kube-state-metrics.svc.cluster.local:8080
+```
+
+Or if using Prometheus Operator / ServiceMonitor:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-state-metrics
+  namespace: kube-state-metrics
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-state-metrics
+  endpoints:
+    - port: metrics
+```
+
+## Verification
+
+```bash
+# Pod should be Running
+kubectl get pods -n kube-state-metrics
+
+# Service should have ClusterIP with ports 8080, 8081
+kubectl get svc -n kube-state-metrics
+
+# RBAC should be created
+kubectl get clusterrole,clusterrolebinding | grep kube-state-metrics
+
+# Metrics should return kube_* metrics
+kubectl port-forward svc/kube-state-metrics 8080:8080 -n kube-state-metrics &
+curl http://localhost:8080/metrics | head -20
+
+# Logs should show no errors
+kubectl logs deployment/kube-state-metrics -n kube-state-metrics
+```

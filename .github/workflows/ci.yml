@@ -7,40 +7,20 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  helm-validate:
     runs-on: ubuntu-latest
-
-    # Uncomment and configure the matrix for your stack:
-    # strategy:
-    #   matrix:
-    #     node-version: [18.x, 20.x]
 
     steps:
       - uses: actions/checkout@v4
 
-      # --- Node.js example ---
-      # - uses: actions/setup-node@v4
-      #   with:
-      #     node-version: ${{ matrix.node-version }}
-      #     cache: 'npm'
-      # - run: npm ci
-      # - run: npm run lint
-      # - run: npm test
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
 
-      # --- Python example ---
-      # - uses: actions/setup-python@v5
-      #   with:
-      #     python-version: '3.12'
-      # - run: pip install -r requirements.txt
-      # - run: python -m pytest
+      - name: Helm lint
+        run: helm lint deployment/helm/kube-state-metrics/
 
-      # --- Go example ---
-      # - uses: actions/setup-go@v5
-      #   with:
-      #     go-version: '1.22'
-      # - run: go build ./...
-      # - run: go test ./...
-
-      # Placeholder step — replace with your actual commands
-      - name: Template placeholder
-        run: echo "Update ci.yml with your project's build, lint, and test commands."
+      - name: Helm template (dry-run)
+        run: |
+          helm template kube-state-metrics deployment/helm/kube-state-metrics/ \
+            --namespace kube-state-metrics \
+            --debug
