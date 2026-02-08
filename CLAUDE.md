@@ -24,6 +24,11 @@ deployment/helm/kube-state-metrics/   # Helm chart (all K8s manifests)
   Chart.yaml                          # Chart metadata, appVersion tracks upstream
   values.yaml                         # Default configuration
   templates/                          # K8s resource templates
+dashboards/                           # Grafana dashboard JSON files
+  resource-usage.json                 # CPU & memory usage vs requests/limits
+  cluster-overview.json               # High-level cluster state
+  workload-status.json                # Deployment, DaemonSet, Job health
+  node-overview.json                  # Per-node resources & capacity
 .github/workflows/
   ci.yml                              # helm lint + helm template validation
   auto-tag.yml                        # Semver tagging on merge to main
